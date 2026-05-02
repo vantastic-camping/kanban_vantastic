@@ -779,7 +779,7 @@
     </div>
 
     <div class="sync-section" style="border:1px solid var(--accent);border-radius:10px;padding:14px;background:rgba(200,169,110,0.05);">
-      <div class="sync-section-title" style="color:var(--accent);">⚡ Supabase Cloud-Sync (automatisch)</div>
+      <div class="sync-section-title" style="color:var(--accent);">⚡ Firebase Cloud-Sync (automatisch)</div>
       <div id="cloud-status" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">
         <span id="cloud-status-text">Verbinde…</span>
       </div>
@@ -800,7 +800,7 @@
         <button class="btn" onclick="exportHTMLWithData()">⬇ data.json (Backup)</button>
       </div>
       <div class="sync-info">
-        Lokale Sicherung der Daten falls Cloud-Sync nicht möglich. Normalerweise nicht nötig — alle Daten sind in Supabase gespeichert.
+        Lokale Sicherung der Daten falls Cloud-Sync nicht möglich. Normalerweise nicht nötig — alle Daten sind in Firebase gespeichert.
       </div>
     </div>
 
@@ -997,7 +997,7 @@ function init() {
     setupDropZones();
     updateSyncBar();
     restoreTrackingState();
-    // Test Supabase connection in background
+    // Test Firebase connection in background
     testSupabaseConnection().catch(function(e){ console.warn(e); });
   });
 }
