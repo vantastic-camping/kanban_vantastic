@@ -768,16 +768,7 @@
   <div class="sync-modal" onclick="event.stopPropagation()">
     <h2>💾 Daten & Sync</h2>
 
-    <div class="sync-section">
-      <div class="sync-section-title">Lokaler Speicher (dieses Gerät)</div>
-      <div class="storage-bar-wrap"><div class="storage-bar-fill" id="storage-bar" style="width:0%;background:var(--accent)"></div></div>
-      <div class="sync-info" id="storage-info">Wird berechnet…</div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn btn-primary" onclick="saveNow()">Jetzt speichern</button>
-        <button class="btn" onclick="loadFromStorage()">Letzten Stand laden</button>
-      </div>
-    </div>
-
+    <!-- Firebase Cloud-Sync (Hauptfunktion) -->
     <div class="sync-section" style="border:1px solid var(--accent);border-radius:10px;padding:14px;background:rgba(200,169,110,0.05);">
       <div class="sync-section-title" style="color:var(--accent);">⚡ Firebase Cloud-Sync (automatisch)</div>
       <div id="cloud-status" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">
@@ -788,33 +779,31 @@
         <button class="btn" onclick="pullFromSupabase()" id="cloud-pull-btn">⬇ Von Cloud laden</button>
       </div>
       <div class="sync-info">
-        <strong>Vollautomatisch</strong> — jede Änderung wird sofort in die Cloud gespeichert.<br>
-        Auf allen Geräten gleicher Stand. Bilder/PDFs werden in einem Cloud-Speicher abgelegt (kein 5-MB-Limit).
+        <strong>Vollautomatisch</strong> — jede Änderung wird sofort in Firebase gespeichert.<br>
+        Auf allen Geräten gleicher Stand. Bilder/PDFs im Firebase Storage (kein 5-MB-Limit).
       </div>
     </div>
 
+    <!-- Lokaler Speicher (Statusinfo) -->
     <div class="sync-section">
-      <div class="sync-section-title">Manuelle Sicherung (Backup)</div>
-      <div class="sync-actions">
-        <button class="btn" onclick="exportJSON()">⬇ JSON-Backup (mit Datum)</button>
-        <button class="btn" onclick="exportHTMLWithData()">⬇ data.json (Backup)</button>
-      </div>
-      <div class="sync-info">
-        Lokale Sicherung der Daten falls Cloud-Sync nicht möglich. Normalerweise nicht nötig — alle Daten sind in Firebase gespeichert.
-      </div>
+      <div class="sync-section-title">Lokaler Speicher (Cache auf diesem Gerät)</div>
+      <div class="storage-bar-wrap"><div class="storage-bar-fill" id="storage-bar" style="width:0%;background:var(--accent)"></div></div>
+      <div class="sync-info" id="storage-info">Wird berechnet…</div>
     </div>
 
+    <!-- Backup -->
     <div class="sync-section">
-      <div class="sync-section-title">Import — Stand von anderem Gerät übernehmen</div>
+      <div class="sync-section-title">Notfall-Backup (lokale Datei)</div>
       <div class="sync-actions">
+        <button class="btn" onclick="exportJSON()">⬇ JSON-Backup erstellen</button>
         <label class="btn" style="cursor:pointer;">
-          ⬆ JSON importieren
+          ⬆ JSON-Backup wiederherstellen
           <input type="file" accept=".json" onchange="importJSON(this)" style="display:none;">
         </label>
       </div>
       <div class="sync-info">
-        Importierte Daten <strong>ersetzen</strong> den aktuellen Stand vollständig.<br>
-        Exportiere zuerst eine Sicherung, falls du aktuelle Daten behalten möchtest.
+        Nur für Notfälle — normalerweise sind alle Daten sicher in Firebase.<br>
+        Ein Backup stellt den Stand vollständig wieder her.
       </div>
     </div>
 
