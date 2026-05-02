@@ -309,13 +309,12 @@
   .btn-history-confirm:hover{opacity:0.85;}
   .btn-history-add{font-size:11px;padding:4px 10px;margin-top:6px;}
 </style>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, collection, addDoc, getDocs, deleteDoc, updateDoc }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
+<!-- Firebase CDN (compat version — works in all browsers without module system) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<script>
+  // Initialize Firebase (compat API — global firebase object)
   const firebaseConfig = {
     apiKey:            "AIzaSyBZ8zzu2yr_H_tl0i9pK6AHd_LfVjNwq8s",
     authDomain:        "vantastic-apps.firebaseapp.com",
@@ -325,17 +324,32 @@
     appId:             "1:875686114859:web:0e3a161f48c33b06579c6e"
   };
 
-  const app     = initializeApp(firebaseConfig);
-  const db      = getFirestore(app);
-  const storage = getStorage(app);
+  firebase.initializeApp(firebaseConfig);
+  const _fbDb      = firebase.firestore();
+  const _fbStorage = firebase.storage();
 
-  // Expose to global scope so non-module scripts can access
-  window.FB_DB      = db;
-  window.FB_STORAGE = storage;
-  window.FB_DB_FNS  = { doc, getDoc, setDoc, collection, addDoc, getDocs, deleteDoc, updateDoc };
-  window.FB_STORAGE_FNS = { ref, uploadBytes, getDownloadURL, deleteObject };
+  // Expose via window globals used by app code
+  window.FB_DB      = _fbDb;
+  window.FB_STORAGE = _fbStorage;
 
-  // Signal that Firebase is ready
+  // Compat API: wrap functions to match modular API signatures
+  window.FB_DB_FNS = {
+    doc: function(db, col, docId) { return db.collection(col).doc(docId); },
+    getDoc: function(ref) { return ref.get().then(function(snap){ return { exists: function(){ return snap.exists; }, data: function(){ return snap.data(); } }; }); },
+    setDoc: function(ref, data) { return ref.set(data); },
+    collection: function(db, col) { return db.collection(col); },
+    addDoc: function(ref, data) { return ref.add(data); },
+    getDocs: function(ref) { return ref.get(); },
+    deleteDoc: function(ref) { return ref.delete(); },
+    updateDoc: function(ref, data) { return ref.update(data); }
+  };
+  window.FB_STORAGE_FNS = {
+    ref: function(storage, path) { return storage.ref(path); },
+    uploadBytes: function(ref, blob) { return ref.put(blob); },
+    getDownloadURL: function(ref) { return ref.getDownloadURL(); },
+    deleteObject: function(ref) { return ref.delete(); }
+  };
+
   window.FB_READY = true;
   document.dispatchEvent(new Event('firebase-ready'));
 </script>
@@ -2496,7 +2510,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight' && lbImages.length) lbNav(1);
 });
 
-// Firebase module is type="module" — it runs async before DOMContentLoaded
+// Firebase compat scripts load synchronously before this script runs
 // We need to wait for it to expose window.FB_DB before starting the app
 if (window.FB_READY) {
   init();
