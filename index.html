@@ -2130,18 +2130,24 @@ function startRealtimeSync() {
   if (badge) badge.classList.remove('offline');
 
   fbRealtimeUnsub = onSnapshot(docRef, async function(snap) {
-    // Suppress the echo of our own write
-    if (fbIgnoreNextSnap) { fbIgnoreNextSnap = false; return; }
-    // Also ignore if we are currently pushing (our own write is in flight)
-    if (fbSyncing) return;
-
-    if (!snap.exists()) return;
+    // snap.exists is a boolean in compat onSnapshot (NOT a function like in getDoc wrapper)
+    if (!snap.exists) return;
     const data = snap.data();
     if (!data || !Array.isArray(data.tasks)) return;
 
-    // Check savedAt to avoid re-applying identical data
     const incomingSavedAt = data.savedAt || '';
-    if (fbLastSyncAt && incomingSavedAt === fbLastSyncAt.toISOString()) return;
+
+    // Suppress echo of our own write — only if savedAt matches what we just wrote
+    if (fbIgnoreNextSnap) {
+      fbIgnoreNextSnap = false;
+      if (fbLastSyncAt && incomingSavedAt === fbLastSyncAt.toISOString()) return;
+    }
+
+    // Skip if currently pushing
+    if (fbSyncing) return;
+
+    // Skip if we already have this exact version
+    if (fbLastSyncAt && incomingSavedAt && incomingSavedAt === fbLastSyncAt.toISOString()) return;
 
     // Apply remote data
     tasks = [];
