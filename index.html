@@ -238,6 +238,10 @@
   @keyframes pulse{from{opacity:1}to{opacity:0.4}}
   .sync-time{flex:1;}
   .sync-size{color:var(--text-dim);font-family:'DM Mono',monospace;}
+  .realtime-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#4aaa72;background:rgba(74,170,114,0.1);border:1px solid rgba(74,170,114,0.3);border-radius:20px;padding:1px 7px;flex-shrink:0;}
+  .realtime-dot{width:5px;height:5px;border-radius:50%;background:#4aaa72;animation:pulse 1.5s ease-in-out infinite alternate;}
+  .realtime-badge.offline{color:var(--text-dim);background:transparent;border-color:var(--border);}
+  .realtime-badge.offline .realtime-dot{background:var(--text-dim);animation:none;}
 
   /* TOAST */
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface2);border:1px solid var(--border-hover);border-radius:10px;padding:10px 20px;font-size:13px;color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9000;transition:transform 0.3s cubic-bezier(.34,1.56,.64,1),opacity 0.3s;opacity:0;pointer-events:none;}
@@ -341,7 +345,8 @@
     addDoc: function(ref, data) { return ref.add(data); },
     getDocs: function(ref) { return ref.get(); },
     deleteDoc: function(ref) { return ref.delete(); },
-    updateDoc: function(ref, data) { return ref.update(data); }
+    updateDoc: function(ref, data) { return ref.update(data); },
+    onSnapshot: function(ref, callback, errCallback) { return ref.onSnapshot(callback, errCallback); }
   };
   window.FB_STORAGE_FNS = {
     ref: function(storage, path) { return storage.ref(path); },
@@ -385,6 +390,7 @@
   <div class="sync-dot" id="sync-dot"></div>
   <span class="sync-time" id="sync-time">Noch nicht gespeichert</span>
   <span class="sync-size" id="sync-size"></span>
+  <span class="realtime-badge offline" id="realtime-badge"><span class="realtime-dot"></span>Echtzeit-Sync</span>
 </div>
 
 <!-- FILTER BAR -->
@@ -988,6 +994,8 @@ function init() {
     restoreTrackingState();
     // Test Firebase connection in background
     testSupabaseConnection().catch(function(e){ console.warn(e); });
+    // Start realtime listener — keeps all open devices in sync automatically
+    setTimeout(startRealtimeSync, 1000);
   });
 }
 
@@ -2092,9 +2100,12 @@ function updateStorageInfo() {
 // Firebase is loaded via CDN module in <head> — we access it via window.FB_*
 // set by the module script after initializeApp
 
-let fbSyncTimer   = null;
-let fbSyncing     = false;
-let fbLastSyncAt  = null;
+let fbSyncTimer        = null;
+let fbSyncing          = false;
+let fbLastSyncAt       = null;
+let fbRealtimeUnsub    = null;   // holds the onSnapshot unsubscribe function
+let fbRealtimeActive   = false;  // true once the live listener is running
+let fbIgnoreNextSnap   = false;  // suppress echo of own push
 
 function updateCloudStatus(text, color) {
   const el = document.getElementById('cloud-status-text');
@@ -2103,11 +2114,88 @@ function updateCloudStatus(text, color) {
   el.style.color = color || 'var(--text-muted)';
 }
 
+/* ── REALTIME LISTENER ──────────────────────────────── */
+function startRealtimeSync() {
+  if (fbRealtimeActive || !window.FB_DB) return;
+
+  const { doc, onSnapshot } = window.FB_DB_FNS;
+  const db     = window.FB_DB;
+  const docRef = doc(db, 'KANBAN-data', 'main');
+
+  fbRealtimeActive = true;
+  updateCloudStatus('⟳ Echtzeit-Sync aktiv…', '#c8a02a');
+
+  // Update the sync-bar badge to "live"
+  const badge = document.getElementById('realtime-badge');
+  if (badge) badge.classList.remove('offline');
+
+  fbRealtimeUnsub = onSnapshot(docRef, async function(snap) {
+    // Suppress the echo of our own write
+    if (fbIgnoreNextSnap) { fbIgnoreNextSnap = false; return; }
+    // Also ignore if we are currently pushing (our own write is in flight)
+    if (fbSyncing) return;
+
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (!data || !Array.isArray(data.tasks)) return;
+
+    // Check savedAt to avoid re-applying identical data
+    const incomingSavedAt = data.savedAt || '';
+    if (fbLastSyncAt && incomingSavedAt === fbLastSyncAt.toISOString()) return;
+
+    // Apply remote data
+    tasks = [];
+    attachmentCache = {};
+    await idbDeleteAll();
+
+    for (const cloudTask of data.tasks) {
+      const t = Object.assign({}, cloudTask);
+      delete t.imageUrls;
+      delete t.pdfUrls;
+      t.images = (cloudTask.imageUrls || []).map(function(i){ return {name: i.name, url: i.url}; });
+      t.pdfs   = (cloudTask.pdfUrls   || []).map(function(p){ return {name: p.name, url: p.url}; });
+      tasks.push(t);
+      if (t.images.length || t.pdfs.length) {
+        attachmentCache[t.id] = {taskId: t.id, images: t.images, pdfs: t.pdfs};
+        await idbSave(t.id, t.images, t.pdfs);
+      }
+    }
+    nextId = data.nextId || (tasks.length ? Math.max.apply(null, tasks.map(function(t){return t.id;})) + 1 : 1);
+    activityLog = (data.activityLog || []).map(function(a){ return Object.assign({}, a, {time: new Date(a.time)}); });
+    fbLastSyncAt = incomingSavedAt ? new Date(incomingSavedAt) : new Date();
+
+    saveToStorage();
+    renderAll();
+
+    const timeStr = new Date().toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+    updateCloudStatus('✓ Echtzeit-Sync aktiv · zuletzt ' + timeStr, '#4aaa72');
+    showToast('🔄 Board aktualisiert (' + tasks.length + ' Aufgaben)', '', 2000);
+
+  }, function(err) {
+    fbRealtimeActive = false;
+    const badge2 = document.getElementById('realtime-badge');
+    if (badge2) badge2.classList.add('offline');
+    updateCloudStatus('Echtzeit-Sync Fehler: ' + err.message, '#d97c7c');
+    console.error('onSnapshot error:', err);
+    // Retry after 10s
+    setTimeout(startRealtimeSync, 10000);
+  });
+}
+
+function stopRealtimeSync() {
+  if (fbRealtimeUnsub) { fbRealtimeUnsub(); fbRealtimeUnsub = null; }
+  fbRealtimeActive = false;
+}
+
 /* Auto-sync after every change (debounced 2.5s) */
 function scheduleCloudSync() {
   if (fbSyncTimer) clearTimeout(fbSyncTimer);
   fbSyncTimer = setTimeout(function(){
-    pushToSupabase(true).catch(function(e){ console.warn('Auto-sync failed:', e); });
+    fbIgnoreNextSnap = true;  // suppress the echo of this write
+    pushToSupabase(true).catch(function(e){
+      fbIgnoreNextSnap = false;
+      console.warn('Auto-sync failed:', e);
+    });
   }, 2500);
 }
 
@@ -2218,17 +2306,18 @@ async function pushToSupabase(silent) {
     }
 
     // Write to Firestore: single document in KANBAN-data collection
+    const savedAt = new Date().toISOString();
     const docRef = doc(db, 'KANBAN-data', 'main');
     await setDoc(docRef, {
       tasks: tasksForCloud,
       nextId: nextId,
       activityLog: activityLog.map(a => ({text: a.text, time: a.time.toISOString()})),
-      savedAt: new Date().toISOString()
+      savedAt: savedAt
     });
 
-    fbLastSyncAt = new Date();
+    fbLastSyncAt = new Date(savedAt);
     const timeStr = fbLastSyncAt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
-    updateCloudStatus('\u2713 Synchronisiert um ' + timeStr, '#4aaa72');
+    updateCloudStatus('\u2713 Synchronisiert um ' + timeStr + ' · Echtzeit-Sync aktiv', '#4aaa72');
     if (!silent) showToast('\u2713 ' + tasks.length + ' Aufgaben gespeichert', 'success', 3000);
   } catch(err) {
     updateCloudStatus('Sync fehlgeschlagen: ' + err.message, '#d97c7c');
